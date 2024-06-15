@@ -21,6 +21,7 @@ from homeassistant.components.climate.const import (
     PRESET_AWAY,
     PRESET_ECO,
     PRESET_HOME,
+    PRESET_COMFORT,
     PRESET_NONE,
     ClimateEntityFeature,
 )
@@ -54,6 +55,10 @@ from .const import (
     CONF_HVAC_ADD_OFF,
     CONF_FAN_SPEED_DP,
     CONF_FAN_SPEED_LIST,
+    CONF_POWER_LEVEL_DP,
+    CONF_POWER_LEVEL_SET,
+    CONF_POWER_LEVEL_LIST,
+    CONF_PRESET_AF
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -110,6 +115,7 @@ DEFAULT_TEMPERATURE_STEP = PRECISION_HALVES
 MODE_WAIT = 0.1
 
 FAN_SPEEDS_DEFAULT = "auto,low,middle,high"
+POWER_LEVELS_DEFAULT = "1,2,3,4,5,auto"
 
 
 def flow_schema(dps):
@@ -142,6 +148,8 @@ def flow_schema(dps):
         vol.Optional(CONF_PRESET_SET, default={}): selector.ObjectSelector(),
         vol.Optional(CONF_FAN_SPEED_DP): _col_to_select(dps, is_dps=True),
         vol.Optional(CONF_FAN_SPEED_LIST, default=FAN_SPEEDS_DEFAULT): str,
+        vol.Optional(CONF_POWER_LEVEL_DP): _col_to_select(dps, is_dps=True),
+        vol.Optional(CONF_POWER_LEVEL_LIST, default=POWER_LEVELS_DEFAULT): str,
         vol.Optional(CONF_TEMPERATURE_UNIT): _col_to_select(
             [TEMPERATURE_CELSIUS, TEMPERATURE_FAHRENHEIT]
         ),
@@ -211,6 +219,7 @@ class LocalTuyaClimate(LocalTuyaEntity, ClimateEntity):
         self._hvac_mode = None
         self._preset_mode = None
         self._hvac_action = None
+        self._swing_mode = None
         self._precision = float(self._config.get(CONF_PRECISION, DEFAULT_PRECISION))
         self._precision_target = float(
             self._config.get(CONF_TARGET_PRECISION, DEFAULT_PRECISION)
@@ -260,6 +269,13 @@ class LocalTuyaClimate(LocalTuyaEntity, ClimateEntity):
         # Temperture unit
         self._temperature_unit = config_unit(self._config.get(CONF_TEMPERATURE_UNIT))
 
+        # Power Levels
+        self._power_level_dp = self._config.get(CONF_POWER_LEVEL_DP)
+        if power_levels := self._config.get(CONF_FAN_SPEED_LIST, []):
+            power_levels = [v.lstrip() for v in power_levels.split(",")]
+        self._power_levels_supported = power_levels
+        self._has_power_level_mode = self._power_level_dp and self._power_levels_supported
+
     @property
     def supported_features(self):
         """Flag supported features."""
@@ -270,6 +286,8 @@ class LocalTuyaClimate(LocalTuyaEntity, ClimateEntity):
             supported_features |= ClimateEntityFeature.PRESET_MODE
         if self._has_fan_mode:
             supported_features |= ClimateEntityFeature.FAN_MODE
+        if self._has_power_level_mode:
+            supported_features |= ClimateEntityFeature.SWING_MODE
 
         try:  # requires HA >= 2024.2.1
             supported_features |= ClimateEntityFeature.TURN_OFF
@@ -406,6 +424,18 @@ class LocalTuyaClimate(LocalTuyaEntity, ClimateEntity):
         """Return the list of available fan modes."""
         return self._fan_supported_speeds
 
+    @property
+    def power_level_mode(self):
+        """Return current preset."""
+        if not (power_level_value := self.dp_value(self._power_level_dp)):
+            return None
+        return power_level_value
+
+    @property
+    def power_level_modes(self):
+        """Return the list of available power_levels/swing modes."""
+        self._power_levels_supported
+
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         if ATTR_TEMPERATURE in kwargs and self.has_config(CONF_TARGET_TEMPERATURE_DP):
@@ -426,6 +456,13 @@ class LocalTuyaClimate(LocalTuyaEntity, ClimateEntity):
             await self._device.set_dp(True, self._dp_id)
 
         await self._device.set_dp(fan_mode, self._fan_speed_dp)
+
+    async def async_set_power_level_mode(self, power_level_mode):
+        """Set new target power level mode."""
+        if not self._state:
+            await self._device.set_dp(True, self._dp_id)
+
+        await self._device.set_dp(power_level_mode, self._power_level_dp)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new target operation mode."""

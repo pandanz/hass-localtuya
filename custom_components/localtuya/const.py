@@ -145,6 +145,10 @@ CONF_HVAC_ADD_OFF = "hvac_add_off"
 CONF_ECO_DP = "eco_dp"
 CONF_ECO_VALUE = "eco_value"
 CONF_FAN_SPEED_LIST = "fan_speed_list"
+CONF_POWER_LEVEL_DP = "power_level_dp"
+CONF_POWER_LEVEL_SET = "power_level_set"
+CONF_POWER_LEVEL_LIST = "power_level_list"
+CONF_PRESET_AF = "Anti-freeze"
 
 # vacuum
 CONF_POWERGO_DP = "powergo_dp"
